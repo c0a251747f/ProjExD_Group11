@@ -1,11 +1,8 @@
 import pygame as pg
 import random
 import sys
-<<<<<<< HEAD
-=======
 import os
 import math
->>>>>>> 4122406382160d271ab592cd46186814bc5e822a
 
 # --- 初期設定 ---
 pg.init()
@@ -398,7 +395,6 @@ def main():
                 pg.draw.rect(screen, CYAN, (11, 76, gauge_width - 2, 8)) # 中身
             except:
                 pass
-<<<<<<< HEAD
         
         #追加機能-時間経過によりスピードアップ
         current_fps = min(120, FPS + (score // 600) * 5)#10秒に1回スピードアップ
@@ -412,15 +408,14 @@ def main():
         except:
             pass
         
-=======
 
             # ポップアップの描画
-            for popup in popups:
-                try:
+        for popup in popups:
+            try:
                     popup_text = font.render(popup.text, True, (255,255,0))
                     screen.blit(popup_text, (popup.x, popup.y))
-                except:
-                    pass
+            except:
+                pass
 
         # ===== ゲームオーバー画面 =====
         if game_state == GAME_OVER:#BB
@@ -464,7 +459,6 @@ def main():
             screen.blit(retry, retry_rect)
             screen.blit(score_result, score_rect)
 
->>>>>>> 4122406382160d271ab592cd46186814bc5e822a
         pg.display.flip()
         clock.tick(current_fps)   
 
