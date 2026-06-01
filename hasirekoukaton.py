@@ -1,6 +1,11 @@
 import pygame as pg
 import random
 import sys
+<<<<<<< HEAD
+=======
+import os
+import math
+>>>>>>> 4122406382160d271ab592cd46186814bc5e822a
 
 # --- 初期設定 ---
 pg.init()
@@ -14,6 +19,10 @@ pg.display.set_caption("こうかとんランゲーム")
 # カラー定義
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+GRAY = (180, 180, 180)
+GREEN = (50, 220, 50)
+RED = (255, 0, 0)  #無敵UI用の赤 #追加
+CYAN = (0, 255, 255)  #無敵エフェクト・ゲージ用の水色 #追加
 
 # フレームレート管理
 clock = pg.time.Clock()
@@ -56,11 +65,69 @@ class Player:
         self.jump_velocity = 15  # 初速度
         self.velocity_y = 0
         self.gravity = 0.75       # 重力
+        self.double_jump_ready = False  # 2段ジャンプ可能回数
+        self.jump_gauge = 0
+        self.jump_gauge_max = 500
+        # 無敵関係 #追加
+        self.invincible_count = 3  #無敵の回数 #追加
+        self.invincible_timer = 0  #無敵の効果時間 #追加
+        self.is_invincible = False #無敵時間かどうか #追加
+        self.blink_timer = 0 #点滅エフェクト #追加
 
     def jump(self):
         if not self.is_jumping:
             self.is_jumping = True
             self.velocity_y = -self.jump_velocity
+        elif self.double_jump_ready == True:
+            self.double_jump_ready = False
+            self.jump_gauge = 0
+            self.velocity_y = -self.jump_velocity * 0.9
+
+    def draw_jump_gauge(self, screen):
+        """2段ジャンプのゲージを描画する関数"""
+        # ゲージ背景
+        jump_gauge_x = 5
+        jump_gauge_y = 250
+        jump_gauge_width = 90
+        jump_gauge_height = 20
+
+        pg.draw.rect(
+            screen,
+            GRAY,
+            (jump_gauge_x, jump_gauge_y, jump_gauge_width, jump_gauge_height)
+        )
+
+        # ゲージ本体
+        current_width = (
+            jump_gauge_width * self.jump_gauge / self.jump_gauge_max
+        )
+
+        color = GREEN
+
+        # MAX時は赤色
+        if self.double_jump_ready:
+            color = RED
+
+        pg.draw.rect(
+            screen,
+            color,
+            (jump_gauge_x, jump_gauge_y, current_width, jump_gauge_height)
+        )
+
+        # 枠線
+        pg.draw.rect(
+            screen,
+            BLACK,
+            (jump_gauge_x, jump_gauge_y, jump_gauge_width, jump_gauge_height),
+            3
+        )
+    
+    def activate_invincible(self):
+        #無敵発動メゾット #追加
+        if not self.is_invincible and self.invincible_count > 0:
+            self.is_invincible = True
+            self.invincible_count -= 1
+            self.invincible_timer = 180
 
     def update(self):
         if self.is_jumping:
@@ -73,10 +140,30 @@ class Player:
                 self.is_jumping = False
                 self.velocity_y = 0
 
+        # 2段ジャンプゲージ蓄積
+        if self.velocity_y == 0:
+            if self.jump_gauge < self.jump_gauge_max:
+                self.jump_gauge += 1
+            
+            if self.jump_gauge >= self.jump_gauge_max:
+                    self.double_jump_ready = True
+        #無敵タイマーの更新 #追加
+        if self.is_invincible:
+            self.invincible_timer -= 1
+            self.blink_timer += 1
+            if self.invincible_timer <= 0:
+                self.is_invincible = False
+                self.invincible_timer = 0
+
     def draw(self):
+        #無敵状態なら点滅 #追加
+        if self.is_invincible and (self.blink_timer // 4) % 2 == 0:
+            pass
+        else:
+            current_image = self.img_run
+            screen.blit(current_image, (self.x, self.y))
         # 正しい縦横比に修正された run.png を表示
-        current_image = self.img_run
-        screen.blit(current_image, (self.x, self.y))
+        
 
     def get_rect(self):
         return pg.Rect(self.x, self.y, self.width, self.height)
@@ -94,6 +181,8 @@ class Obstacle:
         self.y = SCREEN_HEIGHT - 80 - self.height
         self.speed = speed
 
+        self.passed = False
+
     def update(self):
         self.x -= self.speed  # 左へ自動移動
 
@@ -103,12 +192,27 @@ class Obstacle:
     def get_rect(self):
         return pg.Rect(self.x, self.y, self.width, self.height)
 
+class ScorePopup:
+    """スコア加算時に一時的に表示されるテキストのエフェクト"""
+    def __init__(self, x, y, text):
+        self.x = x
+        self.y = y
+        self.text = text
+        self.timer = 30
+    
+    def update(self):
+        self.timer -= 1
+        self.y -= 0.5
+    def is_dead(self):
+        return self.timer <= 0
+
 
 # --- メインゲームループ ---
 def main():
     player = Player()
     obstacles = []
-    
+    popups = []
+
     # スコア機能
     score = 0
     game_speed = 7
@@ -118,67 +222,183 @@ def main():
     
     game_over = False
     font = pg.font.Font(None, 40)
+    small_font = pg.font.SysFont("msgothic", 30)  #無敵表示用のフォント #追加
+    sub_font = pg.font.SysFont("meiryo", 35)
+    title_font = pg.font.SysFont("meiryo", 55)
+
+    # ゲーム状態
+    START = 0
+    PLAYING = 1
+    GAME_OVER = 2
+
+    game_state = START
+
+    # 初期化関数
+    def reset_game():
+        player = Player()
+        obstacles = []
+        score = 0
+        game_speed = 7
+        spawn_timer = 0
+        next_spawn_time = random.randint(60,120)
+
+        return (
+            player,
+            obstacles,
+            score,
+            game_speed,
+            spawn_timer,
+            next_spawn_time
+        )
+
+    player, obstacles, score, game_speed, spawn_timer, next_spawn_time = reset_game()
+
+    title_anim = 0
 
     while True:
-        # --- イベント処理 ---
+
+        # -------- イベント処理 --------
         for event in pg.event.get():
+
             if event.type == pg.QUIT:
                 pg.quit()
                 sys.exit()
-            
-            if event.type == pg.KEYDOWN:
-                if event.key == pg.K_SPACE:
-                    if game_over:
-                        main()  # リスタート
-                        return
-                    else:
-                        player.jump()
 
-        if not game_over:
-            # --- 更新処理 ---
+            if event.type == pg.KEYDOWN:
+
+                if event.key == pg.K_SPACE:
+
+                    # タイトル画面 → ゲーム開始
+                    if game_state == START:
+                        game_state = PLAYING
+
+                    # プレイ中 → ジャンプ
+                    elif game_state == PLAYING:
+                        player.jump()
+                #左シフトキーで無敵発動 #追加
+                if event.key == pg.K_LSHIFT and not game_over:
+                    player.activate_invincible()
+                elif game_state == GAME_OVER:
+                    (
+                        player,
+                        obstacles,
+                        score,
+                        game_speed,
+                        spawn_timer,
+                        next_spawn_time
+                    ) = reset_game()
+
+                    game_state = PLAYING
+
+        # タイトルアニメーション
+        title_anim += 0.05
+
+        # -------- 更新処理 --------
+        if game_state == PLAYING:
+
             player.update()
             score += 1
-            
-            # 障害物の生成管理
+
             spawn_timer += 1
+
             if spawn_timer >= next_spawn_time:
                 obstacles.append(Obstacle(game_speed))
                 spawn_timer = 0
-                next_spawn_time = random.randint(50, 100)
+                next_spawn_time = random.randint(50,100)
 
-            # 障害物の移動と衝突判定
+            # 障害物の移動と衝突判定・スコア判定
             for obstacle in obstacles[:]:
+
                 obstacle.update()
+                
+                # 障害物がプレイヤーを通り過ぎた瞬間の判定
+                if not obstacle.passed and (obstacle.x + obstacle.width < player.x):
+                    score += 100
+                    obstacle.passed = True
+                    
+                    # スコア表示の右側に "+100" ポップアップを生成
+                    popups.append(ScorePopup(160, 10, "+100"))
+                
                 if obstacle.x + obstacle.width < 0:
                     obstacles.remove(obstacle)
-                
+                #プレイヤーが無敵の時は衝突判定をスルー #追加
                 if player.get_rect().colliderect(obstacle.get_rect()):
-                    game_over = True
+                    if not player.is_invincible:
+                        game_state = GAME_OVER  
+                    
+            # ポップアップの更新と寿命が尽きたものの削除
+            for popup in popups[:]:
+                popup.update()
+                if popup.is_dead():
+                    popups.remove(popup)
 
-        # --- 描画処理 ---
-        # 背景画像（pg_bg.jpg）を描画
-        screen.blit(bg_img, (0, 0))
+        # -------- 描画処理 --------
+        screen.blit(bg_img, (0,0))
 
-        # キャラクター・障害物の描画
-        player.draw()
-        for obstacle in obstacles:
-            obstacle.draw()
+        # ===== タイトル画面 =====
+        if game_state == START:
 
-        # スコア表示
-        try:
-            score_text = font.render(f"Score: {score}", True, BLACK)
-            screen.blit(score_text, (10, 10))
-        except:
-            pass
+            # 半透明黒背景
+            dark_surface = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            dark_surface.set_alpha(120)
+            dark_surface.fill((0, 0, 0))
+            screen.blit(dark_surface, (0, 0))
 
-        # ゲームオーバー画面
-        if game_over:
+            # タイトル上下揺れ
+            offset_y = int(math.sin(title_anim) * 10)
+
+            title = title_font.render(
+                "こうかとんランゲーム",
+                True,
+                WHITE
+            )
+
+            press = sub_font.render(
+                "SPACEキーでスタート",
+                True,
+                WHITE
+            )
+
+            title_rect = title.get_rect(
+                center=(SCREEN_WIDTH // 2, 140 + offset_y)
+            )
+
+            press_rect = press.get_rect(
+                center=(SCREEN_WIDTH // 2, 240)
+            )
+
+            screen.blit(title, title_rect)
+            screen.blit(press, press_rect)
+
+        else:
+            # キャラクター・障害物の描画
+            player.draw()
+
+            for obstacle in obstacles:
+                obstacle.draw()
+
+            player.draw_jump_gauge(screen)
+
             try:
-                over_text = font.render("GAME OVER - Press SPACE to Restart", True, BLACK)
-                text_rect = over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-                screen.blit(over_text, text_rect)
+                # スコア
+                score_text = font.render(
+                    f"Score: {score}",
+                    True,
+                    BLACK
+                )
+
+                screen.blit(score_text, (10,10))
+
+                #無敵回数の表示 #追加
+                inv_text = small_font.render(f"無敵 (LShift): {player.invincible_count}", True, RED if player.invincible_count == 0 else BLACK)
+                screen.blit(inv_text, (10, 45))
+                #無敵発動中の残り時間ゲージ表示 #追加
+                gauge_width = int((player.invincible_timer / 180) * 100)
+                pg.draw.rect(screen, BLACK, (10, 75, 100, 10), 1) # 枠線
+                pg.draw.rect(screen, CYAN, (11, 76, gauge_width - 2, 8)) # 中身
             except:
                 pass
+<<<<<<< HEAD
         
         #追加機能-時間経過によりスピードアップ
         current_fps = min(120, FPS + (score // 600) * 5)#10秒に1回スピードアップ
@@ -192,6 +412,59 @@ def main():
         except:
             pass
         
+=======
+
+            # ポップアップの描画
+            for popup in popups:
+                try:
+                    popup_text = font.render(popup.text, True, (255,255,0))
+                    screen.blit(popup_text, (popup.x, popup.y))
+                except:
+                    pass
+
+        # ===== ゲームオーバー画面 =====
+        if game_state == GAME_OVER:#BB
+
+            dark_surface = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            dark_surface.set_alpha(120)
+            dark_surface.fill((0,0,0))
+            screen.blit(dark_surface, (0,0))
+
+            over = title_font.render(
+                "ゲームオーバー",
+                True,
+                WHITE
+            )
+
+            retry = sub_font.render(
+                "SPACEキーでリスタート",
+                True,
+                WHITE
+            )
+
+            score_result = sub_font.render(
+            f"スコア : {score}",
+                True,
+                WHITE
+            )
+
+            over_rect = over.get_rect(
+                center=(SCREEN_WIDTH//2,140)
+            )
+
+            retry_rect = retry.get_rect(
+                center=(SCREEN_WIDTH//2,220)
+            )
+
+            score_rect = score_result.get_rect(
+                center=(SCREEN_WIDTH//2,280)
+            )
+
+            screen.blit(over, over_rect)
+            screen.blit(retry, retry_rect)
+            screen.blit(score_result, score_rect)
+
+>>>>>>> 4122406382160d271ab592cd46186814bc5e822a
         pg.display.flip()
         clock.tick(current_fps)   
 
