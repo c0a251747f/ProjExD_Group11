@@ -5,6 +5,7 @@ import os
 import math
 
 # --- 初期設定 ---
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 pg.init()
 
 # 画面サイズ
@@ -27,11 +28,11 @@ FPS = 60
 
 # --- 画像の読み込み ---
 try:
-    player_run = pg.image.load("ex5/fig/run.png").convert_alpha()
+    player_run = pg.image.load("fig/run.png").convert_alpha()
     
     # 障害物と背景
-    obstacle_img = pg.image.load("ex5/fig/alien.png").convert_alpha()
-    bg_img = pg.image.load("ex5/fig/pg_bg.jpg").convert()
+    obstacle_img = pg.image.load("fig/alien.png").convert_alpha()
+    bg_img = pg.image.load("fig/pg_bg.jpg").convert()
     
     # 背景画像を画面サイズにフィットさせる
     bg_img = pg.transform.scale(bg_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
